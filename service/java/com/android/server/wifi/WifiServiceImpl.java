@@ -1458,8 +1458,10 @@ public final class WifiServiceImpl extends IWifiManager.Stub {
         intentFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
         intentFilter.addAction(WifiManager.WIFI_AP_STATE_CHANGED_ACTION);
         intentFilter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
-        intentFilter.addAction(TelephonyIntents.ACTION_EMERGENCY_CALLBACK_MODE_CHANGED);
         intentFilter.addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED);
+        if(mContext.getResources().getBoolean(R.bool.config_wifi_ecbm_mode_change)) {
+            intentFilter.addAction(TelephonyIntents.ACTION_EMERGENCY_CALLBACK_MODE_CHANGED);
+        }
 
         boolean trackEmergencyCallState = mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_wifi_turn_off_during_emergency_call);
