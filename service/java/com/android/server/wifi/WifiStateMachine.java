@@ -231,6 +231,8 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
     private boolean mEnableAssociatedNetworkSwitchingInDevSettings = true;
     private boolean mHalBasedPnoEnableInDevSettings = false;
 
+    /* Tracks sequence number on a periodic scan message for PNO failure */
+    private int mPnoPeriodicScanToken = 0;
 
     private int mHalFeatureSet = 0;
     private static int mPnoResultFound = 0;
@@ -840,7 +842,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
     /* used to indicated RSSI threshold breach in hw */
     static final int CMD_RSSI_THRESHOLD_BREACH                          = BASE + 164;
 
-
+    /* When there are saved networks and PNO fails, we do a periodic scan to notify
+       a saved/open network in suspend mode */
+    static final int CMD_PNO_PERIODIC_SCAN 
 
     /* Wifi state machine modes of operation */
     /* CONNECT_MODE - connect to any 'known' AP when it becomes available */
@@ -2356,7 +2360,7 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
         return mWifiNative.getNfcWpsConfigurationToken(netId);
     }
 
-    void enableBackgroundScan(boolean enable) {
+    boolean enableBackgroundScan(boolean enable) {
         if (enable) {
             mWifiConfigStore.enableAllNetworks();
         }
@@ -2366,6 +2370,7 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
         } else {
             Log.e(TAG, " Fail to set up pno, want " + enable + " now " + mLegacyPnoEnabled);
         }
+        return ret;
     }
 
     /**
@@ -3617,7 +3622,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                         setScanAlarm(true);
                     } else {
                         if (!mIsScanOngoing) {
-                            enableBackgroundScan(true);
+                            if (!enableBackgroundScan(true)) {
+                               handlePnoFailError();
+                            }
                         }
                     }
                 }
@@ -5769,6 +5776,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                     break;
                 case CMD_STOP_RSSI_MONITORING_OFFLOAD:
                     messageHandlingStatus = MESSAGE_HANDLING_STATUS_DISCARD;
+                    break;
+                case CMD_PNO_PERIODIC_SCAN:
+                    deferMessage(message);
                     break;
                 default:
                     loge("Error! unhandled message" + message);
@@ -9356,7 +9366,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                         * cleared
                         */
                         if (!mIsScanOngoing) {
-                            enableBackgroundScan(true);
+                            if (!enableBackgroundScan(true)) {
+                                handlePnoFailError();
+                            }
                         }
                     } else {
                         setScanAlarm(true);
@@ -9392,6 +9404,17 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                         startScan(UNKNOWN_SCAN_SOURCE, -1, null, null);
                         sendMessageDelayed(obtainMessage(CMD_NO_NETWORKS_PERIODIC_SCAN,
                                     ++mPeriodicScanToken, 0), mNoNetworksPeriodicScan);
+                    }
+                    break;
+                case CMD_PNO_PERIODIC_SCAN:
+                    if ((message.arg1 == mPnoPeriodicScanToken) &&
+                            mBackgroundScanSupported && (mP2pConnected.get() ||
+                            (mWifiConfigStore.getConfiguredNetworks().size()
+                            != 0))) {
+                        startScan(UNKNOWN_SCAN_SOURCE, -1, null, null);
+                        sendMessageDelayed(obtainMessage(CMD_PNO_PERIODIC_SCAN,
+                            ++mPnoPeriodicScanToken, 0),
+                            mDefaultFrameworkScanIntervalMs);
                     }
                     break;
                 case WifiManager.FORGET_NETWORK:
@@ -9514,7 +9537,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                         // attempt again to join that network.
                         if (!mScreenOn && !mIsScanOngoing && mBackgroundScanSupported) {
                             enableBackgroundScan(false);
-                            enableBackgroundScan(true);
+                            if (!enableBackgroundScan(true)) {
+                                handlePnoFailError();
+                            }
                         }
                         return HANDLED;
                     }
@@ -9525,7 +9550,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                     if (!mScreenOn && mIsScanOngoing
                             && mBackgroundScanSupported
                             && !useHalBasedAutoJoinOffload()) {
-                        enableBackgroundScan(true);
+                        if (!enableBackgroundScan(true)) {
+                            handlePnoFailError();
+                        }
                     } else if (!mScreenOn
                             && !mIsScanOngoing
                             && mBackgroundScanSupported
@@ -10297,5 +10324,13 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                 || reason == 19         // PAIRWISE_CIPHER_NOT_VALID
                 || reason == 23         // IEEE_802_1X_AUTH_FAILED
                 || reason == 34;        // DISASSOC_LOW_ACK
+    }
+     private void handlePnoFailError() {
+        if (mBackgroundScanSupported && (mP2pConnected.get() ||
+               (mWifiConfigStore.getConfiguredNetworks().size() != 0))) {
+            sendMessageDelayed(obtainMessage(CMD_PNO_PERIODIC_SCAN,
+                               ++mPnoPeriodicScanToken, 0),
+                               mDefaultFrameworkScanIntervalMs);
+        }
     }
 }
