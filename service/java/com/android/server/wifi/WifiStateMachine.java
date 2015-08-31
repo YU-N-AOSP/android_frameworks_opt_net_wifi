@@ -213,6 +213,7 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
 
     private boolean mScreenOn = false;
     private int mCurrentAssociateNetworkId = -1;
+    private boolean mIsWiFiIpReachabilityEnabled ;
     /* Chipset supports background scan */
     private final boolean mBackgroundScanSupported;
 
@@ -1203,6 +1204,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
 
         mBackgroundScanSupported = mContext.getResources().getBoolean(
                 R.bool.config_wifi_background_scan_support);
+
+        mIsWiFiIpReachabilityEnabled = mContext.getResources().getBoolean(
+                R.bool.config_wifi_ipreachability_monitor);
 
         mPrimaryDeviceType = mContext.getResources().getString(
                 R.string.config_wifi_p2p_device_type);
@@ -8444,20 +8448,22 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
             // cause the roam to faile and the device to disconnect
             clearCurrentConfigBSSID("L2ConnectedState");
 
-            try {
-                mIpReachabilityMonitor = new IpReachabilityMonitor(
-                        mContext,
-                        mDataInterfaceName,
-                        new IpReachabilityMonitor.Callback() {
-                            @Override
-                            public void notifyLost(InetAddress ip, String logMsg) {
-                                sendMessage(CMD_IP_REACHABILITY_LOST, logMsg);
-                            }
-                        });
-            } catch (IllegalArgumentException e) {
-                Log.wtf("Failed to create IpReachabilityMonitor", e);
-            }
-        }
+            if (mIsWiFiIpReachabilityEnabled) {
+            	try {
+                    mIpReachabilityMonitor = new IpReachabilityMonitor(
+                        	mContext,
+                        	mDataInterfaceName,
+                        	new IpReachabilityMonitor.Callback() {
+                            	    @Override
+                            	    public void notifyLost(InetAddress ip, String logMsg) {
+                                	sendMessage(CMD_IP_REACHABILITY_LOST, logMsg);
+                            	    }
+                        	});
+           	 } catch (IllegalArgumentException e) {
+                	Log.wtf("Failed to create IpReachabilityMonitor", e);
+            	 }
+        	}
+	}
 
         @Override
         public void exit() {
