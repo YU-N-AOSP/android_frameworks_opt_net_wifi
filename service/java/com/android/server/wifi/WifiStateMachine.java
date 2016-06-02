@@ -851,7 +851,7 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
 
     /* When there are saved networks and PNO fails, we do a periodic scan to notify
        a saved/open network in suspend mode */
-    static final int CMD_PNO_PERIODIC_SCAN 
+    static final int CMD_PNO_PERIODIC_SCAN                              = BASE + 165;
 
     /* Wifi state machine modes of operation */
     /* CONNECT_MODE - connect to any 'known' AP when it becomes available */
